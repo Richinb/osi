@@ -10,8 +10,6 @@
 
 #define BUFFER_SIZE 4096
 #define MAX_PATH_LEN 4096
-#define DIR_ACCES (S_IRWXU | S_IRGRP | S_IXGRP | S_IROTH | S_IXOTH) // 0755
-#define FILE_ACCES (S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH)          // 0644
 
 int copy_directory_recursive(const char *source_path, const char *dest_path);
 
@@ -40,35 +38,66 @@ char *reverse_string(const char *str)
     return reversed;
 }
 
-int reverse_file(const char *source_path, const char *dest_path)
+int init_files(const char *source_path, const char *dest_path, int *source_fd, int *dest_fd)
 {
-    int source_fd = open(source_path, O_RDONLY); // read-only
-    if (source_fd == -1)
+    *source_fd = open(source_path, O_RDONLY); // read-only
+    if (*source_fd == -1)
     {
         perror("Failed to open source file");
-        return -1;
+        return EXIT_FAILURE;
     }
-
-    int dest_fd = open(dest_path, O_WRONLY | O_CREAT | O_TRUNC, FILE_ACCES); // write-only, create, rewrite
-    if (dest_fd == -1)
+    struct stat src_stat;
+    int return_code = stat(source_path, &src_stat);
+    if (return_code == -1)
+    {
+        perror("Error getting file info");
+        return EXIT_FAILURE;
+    }
+    mode_t mode = src_stat.st_mode;
+    *dest_fd = open(dest_path, O_WRONLY | O_CREAT | O_TRUNC, mode); // write-only, create, rewrite
+    if (*dest_fd == -1)
     {
         perror("Failed to create destination file");
-        close(source_fd);
-        return -1;
+        close(*source_fd);
+        return EXIT_FAILURE;
     }
+    return EXIT_SUCCESS;
+}
 
+void error_close(const char *error, int *source_fd, int *dest_fd)
+{
+    perror(error);
+    close(*source_fd);
+    close(*dest_fd);
+}
+
+void reverse_buffer(char buffer[BUFFER_SIZE], ssize_t bytes_read)
+{
+    for (ssize_t i = 0; i < bytes_read / 2; i++)
+    {
+        char tmp = buffer[i];
+        buffer[i] = buffer[bytes_read - 1 - i];
+        buffer[bytes_read - 1 - i] = tmp;
+    }
+}
+
+int reverse_file(const char *source_path, const char *dest_path)
+{
+    int source_fd = 0;
+    int dest_fd = 0;
+    int return_code = init_files(source_path, dest_path, &source_fd, &dest_fd);
+    if (return_code == EXIT_FAILURE)
+    {
+        return EXIT_FAILURE;
+    }
     off_t file_size = lseek(source_fd, 0, SEEK_END);
     if (file_size == -1)
     {
-        perror("Failed to get file size");
-        close(source_fd);
-        close(dest_fd);
-        return -1;
+        error_close("Failed to get file size", &source_fd, &dest_fd);
+        return EXIT_FAILURE;
     }
-
     char buffer[BUFFER_SIZE];
     off_t remaining = file_size;
-
     while (remaining > 0)
     {
         size_t chunk_size = (remaining > BUFFER_SIZE) ? BUFFER_SIZE : (size_t)remaining;
@@ -76,69 +105,48 @@ int reverse_file(const char *source_path, const char *dest_path)
         int position_status = lseek(source_fd, read_pos, SEEK_SET);
         if (position_status == -1)
         {
-            perror("Failed to seek in source file");
-            close(source_fd);
-            close(dest_fd);
-            return -1;
+            error_close("Failed to seek in source file", &source_fd, &dest_fd);
+            return EXIT_FAILURE;
         }
 
         ssize_t bytes_read = read(source_fd, buffer, chunk_size);
         if (bytes_read == -1)
         {
-            perror("Failed to read from source file");
-            close(source_fd);
-            close(dest_fd);
-            return -1;
+            error_close("Failed to read from source file", &source_fd, &dest_fd);
+            return EXIT_FAILURE;
         }
-
-        // Reverse the chunk in memory
-        for (ssize_t i = 0; i < bytes_read / 2; i++)
-        {
-            char tmp = buffer[i];
-            buffer[i] = buffer[bytes_read - 1 - i];
-            buffer[bytes_read - 1 - i] = tmp;
-        }
+        reverse_buffer(buffer, bytes_read);
 
         ssize_t bytes_written = write(dest_fd, buffer, bytes_read);
         if (bytes_written == -1)
         {
-            perror("Failed to write to destination file");
-            close(source_fd);
-            close(dest_fd);
-            return -1;
+            error_close("Failed to write to destination file", &source_fd, &dest_fd);
+            return EXIT_FAILURE;
         }
-
         remaining -= bytes_read;
     }
-
-    if (close(dest_fd) != 0)
-    {
-        perror("Failed to close destination file");
-        close(source_fd);
-        return -1;
-    }
-
-    if (close(source_fd) != 0)
-    {
-        perror("Failed to close source file");
-        return -1;
-    }
-
-    return 0;
+    close(dest_fd);
+    close(source_fd);
+    return EXIT_SUCCESS;
 }
 
-int create_directory(const char *path)
+int create_directory(const char *path, const char *src)
 {
-    int mkdir_return_value = mkdir(path, DIR_ACCES);
-    if (mkdir_return_value == -1)
+    struct stat src_stat;
+    int return_code = stat(src, &src_stat);
+    if (return_code == -1)
     {
-        if (errno != EEXIST)
-        {
-            perror("Failed to create directory");
-            return -1;
-        }
+        perror("Error getting source directory info");
+        return EXIT_FAILURE;
     }
-    return 0;
+    mode_t mode = src_stat.st_mode;
+    return_code = mkdir(path, mode);
+    if (return_code == -1)
+    {
+        perror("Failed to create directory");
+        return EXIT_FAILURE;
+    }
+    return EXIT_SUCCESS;
 }
 
 int process_directory_entry(const char *source_path, const char *dest_path, const struct dirent *entry)
@@ -149,99 +157,86 @@ int process_directory_entry(const char *source_path, const char *dest_path, cons
     if (snprintf_res >= MAX_PATH_LEN)
     {
         fprintf(stderr, "Error: Path too long: %s/%s\n", source_path, entry->d_name);
-        return -1;
+        return EXIT_FAILURE;
     }
 
     char *reversed_name = reverse_string(entry->d_name);
     if (reversed_name == NULL)
     {
         fprintf(stderr, "Error: Failed to reverse name: %s\n", entry->d_name);
-        return -1;
+        return EXIT_FAILURE;
     }
     snprintf_res = snprintf(dest_entry_path, MAX_PATH_LEN, "%s/%s", dest_path, reversed_name);
     if (snprintf_res >= MAX_PATH_LEN)
     {
         fprintf(stderr, "Error: Path too long: %s/%s\n", dest_path, reversed_name);
         free(reversed_name);
-        return -1;
+        return EXIT_FAILURE;
     }
 
     free(reversed_name);
 
-    struct stat st;
-    if (lstat(source_entry_path, &st) != 0)
+    struct stat path_stat;
+    int return_code = lstat(source_entry_path, &path_stat);
+    if (return_code != 0)
     {
         perror("Failed to get file status");
-        return -1;
+        return EXIT_FAILURE;
     }
 
-    if (S_ISDIR(st.st_mode) == 1)
+    mode_t file_type = path_stat.st_mode;
+    if (S_ISDIR(file_type))
     {
-        return copy_directory_recursive(source_entry_path, dest_entry_path);
+        return_code = copy_directory_recursive(source_entry_path, dest_entry_path);
     }
-    else if (S_ISREG(st.st_mode) == 1)
+    if (S_ISREG(file_type))
     {
-        return reverse_file(source_entry_path, dest_entry_path);
+        return_code = reverse_file(source_entry_path, dest_entry_path);
     }
 
-    return 0;
+    return return_code;
 }
 
 int copy_directory_recursive(const char *source_path, const char *dest_path)
 {
-    struct stat st;
-    if (stat(source_path, &st) != 0)
+    struct stat path_stat;
+    int return_code = stat(source_path, &path_stat);
+    if (return_code != 0)
     {
         perror("Failed to access source directory");
-        return -1;
+        return EXIT_FAILURE;
     }
-
-    if (S_ISDIR(st.st_mode) != 1)
+    return_code = create_directory(dest_path, source_path);
+    if (return_code == -1)
     {
-        fprintf(stderr, "Error: %s is not a directory\n", source_path);
-        return -1;
+        return EXIT_FAILURE;
     }
 
-    printf("Processing directory: %s -> %s\n", source_path, dest_path);
-
-    if (create_directory(dest_path) == -1)
-    {
-        return -1;
-    }
-
-    DIR *dir = opendir(source_path);
-    if (dir == NULL)
+    DIR *src_dir = opendir(source_path);
+    if (src_dir == NULL)
     {
         perror("Failed to open directory");
-        return -1;
+        return EXIT_FAILURE;
     }
 
-    int result = 0;
-    struct dirent *entry;
-
-    while ((entry = readdir(dir)) != NULL)
+    struct dirent *src_dir_entry;
+    while ((src_dir_entry = readdir(src_dir)) != NULL)
     {
-        int on_current_dir = strcmp(entry->d_name, ".");
-        int on_upper_dir = strcmp(entry->d_name, "..");
+        int on_current_dir = strcmp(src_dir_entry->d_name, ".");
+        int on_upper_dir = strcmp(src_dir_entry->d_name, "..");
         if (on_current_dir == 0 || on_upper_dir == 0)
         {
             continue;
         }
-        int process_return_value = process_directory_entry(source_path, dest_path, entry);
-        if (process_return_value == -1)
+        int return_code = process_directory_entry(source_path, dest_path, src_dir_entry);
+        if (return_code == EXIT_FAILURE)
         {
-            result = -1;
             break;
         }
     }
 
-    if (closedir(dir) != 0)
-    {
-        perror("Failed to close directory");
-        result = -1;
-    }
-
-    return result;
+    closedir(src_dir);
+    return return_code;
 }
 
 int main(int argc, char *argv[])
@@ -266,8 +261,8 @@ int main(int argc, char *argv[])
         return EXIT_FAILURE;
     }
 
-    int ret = copy_directory_recursive(source_dir, reversed_dir_name);
+    int return_code = copy_directory_recursive(source_dir, reversed_dir_name);
     free(reversed_dir_name);
 
-    return ret == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
+    return return_code;
 }
