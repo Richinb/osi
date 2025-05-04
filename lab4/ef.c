@@ -25,7 +25,7 @@ void E()
     }
     strcpy(buf2, "hello world");
 
-    printf("buf2 (before shift): %s\n", buf2);
+    printf("buf2 (before free): %s\n", buf2);
     char *mid_ptr = buf2 + 50;
     free(mid_ptr);
     printf("buf2 (after free): %s\n", buf2);
