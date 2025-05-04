@@ -12,7 +12,7 @@ void G()
     if (var_value == NULL)
     {
         // обрабатываю это как ошибку, так как по заданию нужно увидеть различие до и после для уже созданной переменной
-        fprintf(stderr, "no such env var: %s\n", var_name);
+        fprintf(stderr, "Error geting env variable: %s\n", var_name);
         return;
     }
     printf("Original value: %s\n", var_value);
@@ -37,6 +37,6 @@ void G()
 
 int main()
 {
-    H();
+    G();
     return 0;
 }
