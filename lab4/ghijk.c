@@ -1,9 +1,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void H()
+void G()
 {
-    printf("H:\n");
+    printf("G:\n");
     // h.i. Распечатать текущее значение переменной
     const char *var_name = "NEW_VAR";
     printf("Name: %s\n", var_name);
