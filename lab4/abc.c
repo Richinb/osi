@@ -1,16 +1,16 @@
 #include <stdio.h>
 #include <unistd.h>
 
-int global_initialized = 22;
+int global_initialized = 4;
 int global_uninitialized;
-const int global_const = 44;
+const int global_const = 5;
 
 void A()
 {
     printf("A:\n");
     int local_var = 1;
-    static int static_var;
-    const int const_var = 100;
+    static int static_var = 2;
+    const int const_var = 3;
 
     printf("[Local (uninitialized)] Address: %p\n", (void *)&local_var);
     printf("[Static (uninitialized)] Address: %p\n", (void *)&static_var);
