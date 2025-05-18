@@ -54,7 +54,7 @@ int init_files(const char *source_path, const char *dest_path, int *source_fd, i
         return EXIT_FAILURE;
     }
     mode_t mode = src_stat.st_mode;
-    *dest_fd = open(dest_path, O_WRONLY | O_CREAT | O_TRUNC, mode); // write-only, create, rewrite
+    *dest_fd = open(dest_path, O_WRONLY | O_CREAT, mode); // write-only, create
     if (*dest_fd == -1)
     {
         perror("Failed to create destination file");
