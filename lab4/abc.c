@@ -12,8 +12,8 @@ void A()
     static int static_var = 2;
     const int const_var = 3;
 
-    printf("[Local (uninitialized)] Address: %p\n", (void *)&local_var);
-    printf("[Static (uninitialized)] Address: %p\n", (void *)&static_var);
+    printf("[Local] Address: %p\n", (void *)&local_var);
+    printf("[Static] Address: %p\n", (void *)&static_var);
     printf("[Constant] Address: %p\n", (void *)&const_var);
     printf("[Global initialized] Address: %p\n", (void *)&global_initialized);
     printf("[Global uninitialized] Address: %p\n", (void *)&global_uninitialized);
