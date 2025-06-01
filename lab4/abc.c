@@ -24,7 +24,7 @@ void B()
 {
     int pid = getpid();
     printf("B:\nPID: %d\n", pid);
-    printf("/proc/%d/maps", pid);
+    printf("cat /proc/%d/maps", pid);
     getchar();
 }
 
